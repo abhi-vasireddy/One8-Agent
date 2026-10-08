@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../stores/auth-store.js';
-import { Lock, Mail, ArrowRight, AlertCircle, Shield } from 'lucide-react';
+import { getApiBase } from '../../api/client.js';
+import { Lock, Mail, ArrowRight, AlertCircle, Shield, Server, RefreshCw } from 'lucide-react';
 
 export const LoginPage = () => {
   const { login, isLoading } = useAuthStore();
@@ -11,11 +12,17 @@ export const LoginPage = () => {
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState('');
+  const [isNetError, setIsNetError] = useState(false);
   const [showForgot, setShowForgot] = useState(false);
+  const [showServerConfig, setShowServerConfig] = useState(false);
+  const [serverUrl, setServerUrl] = useState(() => {
+    return typeof window !== 'undefined' ? (localStorage.getItem('CAMPUSFLOW_API_URL') || '') : '';
+  });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setIsNetError(false);
 
     if (!email || !password) {
       setError('Please provide both email and password.');
@@ -26,11 +33,29 @@ export const LoginPage = () => {
     if (res.success) {
       navigate(res.redirectPath || '/');
     } else {
-      // Safe, generic security error (no account enumeration)
-      setError(res.error?.includes('inactive') 
-        ? 'Account is inactive. Please contact your administrator.' 
-        : 'Invalid email or password.');
+      const errMessage = res.error || '';
+      const isConnectionIssue = /network error|failed to fetch|connection refused|timeout/i.test(errMessage);
+      if (isConnectionIssue) {
+        setIsNetError(true);
+        setShowServerConfig(true);
+        setError('Cannot reach backend server. Please check your backend URL below.');
+      } else if (errMessage.toLowerCase().includes('inactive')) {
+        setError('Account is inactive. Please contact your administrator.');
+      } else {
+        setError('Invalid email or password.');
+      }
     }
+  };
+
+  const handleSaveServerUrl = () => {
+    if (serverUrl.trim()) {
+      localStorage.setItem('CAMPUSFLOW_API_URL', serverUrl.trim());
+    } else {
+      localStorage.removeItem('CAMPUSFLOW_API_URL');
+    }
+    setError('');
+    setIsNetError(false);
+    window.location.reload();
   };
 
   return (
@@ -104,10 +129,66 @@ export const LoginPage = () => {
             border: '1px solid #FEE2E2',
             color: '#B91C1C',
             fontSize: '0.8rem',
-            marginBottom: '18px',
+            marginBottom: showServerConfig ? '10px' : '18px',
           }}>
             <AlertCircle size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
             <span>{error}</span>
+          </div>
+        )}
+
+        {/* Server Configuration Helper */}
+        {showServerConfig && (
+          <div style={{
+            marginBottom: '18px',
+            padding: '12px 14px',
+            borderRadius: '8px',
+            background: '#F8FAFC',
+            border: '1px solid #E2E8F0',
+            fontSize: '0.78rem',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, color: '#1E293B', marginBottom: '4px' }}>
+              <Server size={14} color="#2563EB" />
+              <span>Backend API Server</span>
+            </div>
+            <div style={{ color: '#64748B', marginBottom: '8px', wordBreak: 'break-all', fontSize: '0.72rem' }}>
+              Current: <code style={{ background: '#E2E8F0', padding: '1px 4px', borderRadius: '4px' }}>{getApiBase()}</code>
+            </div>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <input
+                type="text"
+                placeholder="https://your-backend.onrender.com/api"
+                value={serverUrl}
+                onChange={(e) => setServerUrl(e.target.value)}
+                style={{
+                  flex: 1,
+                  padding: '6px 8px',
+                  borderRadius: '6px',
+                  border: '1px solid #CBD5E1',
+                  fontSize: '0.75rem',
+                  outline: 'none',
+                }}
+              />
+              <button
+                type="button"
+                onClick={handleSaveServerUrl}
+                style={{
+                  padding: '6px 10px',
+                  background: '#2563EB',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  fontSize: '0.73rem',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                Apply
+              </button>
+            </div>
+            <div style={{ marginTop: '6px', fontSize: '0.7rem', color: '#94A3B8' }}>
+              Point this to your deployed backend (e.g. on Render) so other devices can connect.
+            </div>
           </div>
         )}
 
@@ -213,20 +294,47 @@ export const LoginPage = () => {
           </button>
         </form>
 
-        {/* Security Notice */}
+        {/* Security Notice & Server Settings */}
         <div style={{
           marginTop: '28px',
           paddingTop: '18px',
           borderTop: '1px solid #F1F5F9',
           display: 'flex',
+          flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: '6px',
-          fontSize: '0.725rem',
-          color: '#94A3B8',
+          gap: '8px',
         }}>
-          <Shield size={13} color="#94A3B8" />
-          <span>Role-Based Access Control & End-to-End Encryption</span>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            fontSize: '0.725rem',
+            color: '#94A3B8',
+          }}>
+            <Shield size={13} color="#94A3B8" />
+            <span>Role-Based Access Control & End-to-End Encryption</span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowServerConfig(!showServerConfig)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#64748B',
+              fontSize: '0.7rem',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              padding: '2px 6px',
+              borderRadius: '4px',
+            }}
+          >
+            <Server size={11} />
+            <span>{showServerConfig ? 'Hide Server URL Settings' : 'Configure Server URL'}</span>
+          </button>
         </div>
 
         {/* Forgot Password Recovery Modal */}
